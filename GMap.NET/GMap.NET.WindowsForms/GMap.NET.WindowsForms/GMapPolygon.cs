@@ -14,12 +14,29 @@ namespace GMap.NET.WindowsForms
     /// </summary>
     [System.Serializable]
 #if !PocketPC
-    public class GMapPolygon : MapRoute, ISerializable, IDeserializationCallback, IDisposable
+    public class GMapPolygon : ISerializable, IDeserializationCallback, IDisposable
 #else
    public class GMapPolygon : MapRoute, IDisposable
 #endif
     {
         private bool visible = true;
+
+        public string Name;
+
+        public object Tag;
+
+        // Polygons shouldn't need these
+        public string Duration; 
+
+        public List<string> Instructions = new List<string>();
+
+        public RouteStatusCode Status { get; set; }
+
+        public string ErrorMessage { get; set; }
+
+        public int ErrorCode { get; set; }
+
+        public string WarningMessage { get; set; }
 
         /// <summary>
         /// is polygon visible
@@ -129,20 +146,24 @@ namespace GMap.NET.WindowsForms
             }
 
             {
-                Point[] pnts = new Point[LocalPoints.Count];
-                for (int i = 0; i < LocalPoints.Count; i++)
+                foreach (List<GPoint> localPolygon in LocalPolygons)
                 {
-                    Point p2 = new Point((int)LocalPoints[i].X, (int)LocalPoints[i].Y);
-                    pnts[pnts.Length - 1 - i] = p2;
-                }
+                    Point[] pnts = new Point[localPolygon.Count];
 
-                if (pnts.Length > 2)
-                {
-                    graphicsPath.AddPolygon(pnts);
-                }
-                else if (pnts.Length == 2)
-                {
-                    graphicsPath.AddLines(pnts);
+                    for (int i = 0; i < localPolygon.Count; i++)
+                    {
+                        Point p2 = new Point((int)localPolygon[i].X, (int)localPolygon[i].Y);
+                        pnts[pnts.Length - 1 - i] = p2;
+                    }
+
+                    if (pnts.Length > 2)
+                    {
+                        graphicsPath.AddPolygon(pnts);
+                    }
+                    else if (pnts.Length == 2)
+                    {
+                        graphicsPath.AddLines(pnts);
+                    }
                 }
             }
         }
@@ -216,7 +237,25 @@ namespace GMap.NET.WindowsForms
         [NonSerialized]
         public Brush Fill = DefaultFill;
 
-        public readonly List<GPoint> LocalPoints = new List<GPoint>();
+        public List<GPoint> LocalPoints
+        {
+            get
+            {
+                return LocalPolygons[0];
+            }
+        }
+
+        public readonly List<List<GPoint>> LocalPolygons = new List<List<GPoint>>();
+
+        public List<List<PointLatLng>> Polygons = new List<List<PointLatLng>>();
+
+        public List<PointLatLng> Points
+        {
+            get
+            {
+                return Polygons[0];
+            }
+        }
 
         static GMapPolygon()
         {
@@ -227,9 +266,25 @@ namespace GMap.NET.WindowsForms
         }
 
         public GMapPolygon(List<PointLatLng> points, string name)
-           : base(points, name)
         {
-            LocalPoints.Capacity = Points.Count;
+            Name = name;
+
+            Polygons.Add(new List<PointLatLng>());
+            Polygons[0].AddRange(points);
+            LocalPolygons.Add(new List<GPoint>());
+            LocalPolygons[0].Capacity = points.Count;
+        }
+
+        public GMapPolygon(List<List<PointLatLng>> polygons, string name)
+        {
+            Name = name;
+
+            Polygons.AddRange(polygons);
+            for (int i = 0; i < polygons.Count; i++)
+            {
+                LocalPolygons.Add(new List<GPoint>());
+                LocalPolygons[i].Capacity = polygons[i].Count;
+            }
         }
 
         /// <summary>
@@ -240,7 +295,9 @@ namespace GMap.NET.WindowsForms
         /// <returns></returns>
         public bool IsInside(PointLatLng p)
         {
-            int count = Points.Count;
+            List<PointLatLng> outerPolygon = Polygons[0];
+
+            int count = outerPolygon.Count;
 
             if (count < 3)
             {
@@ -251,8 +308,8 @@ namespace GMap.NET.WindowsForms
 
             for (int i = 0, j = count - 1; i < count; i++)
             {
-                var p1 = Points[i];
-                var p2 = Points[j];
+                var p1 = outerPolygon[i];
+                var p2 = outerPolygon[j];
 
                 if (p1.Lat < p.Lat && p2.Lat >= p.Lat || p2.Lat < p.Lat && p1.Lat >= p.Lat)
                 {
@@ -277,9 +334,11 @@ namespace GMap.NET.WindowsForms
         /// <exception cref="T:System.Security.SecurityException">
         /// The caller does not have the required permission.
         /// </exception>
-        public override void GetObjectData(SerializationInfo info, StreamingContext context)
+        public void GetObjectData(SerializationInfo info, StreamingContext context)
         {
-            base.GetObjectData(info, context);
+            info.AddValue("Name", Name);
+            info.AddValue("Tag", Tag);
+            info.AddValue("Polygons", Polygons.ToArray());
 
             info.AddValue("LocalPoints", this.LocalPoints.ToArray());
             info.AddValue("Visible", this.IsVisible);
@@ -294,8 +353,10 @@ namespace GMap.NET.WindowsForms
         /// <param name="info">The info.</param>
         /// <param name="context">The context.</param>
         protected GMapPolygon(SerializationInfo info, StreamingContext context)
-           : base(info, context)
         {
+            Name = info.GetString("Name");
+            Tag = Extensions.GetValue<object>(info, "Tag", null);
+
             this.deserializedLocalPoints = Extensions.GetValue<GPoint[]>(info, "LocalPoints");
             this.IsVisible = Extensions.GetStruct<bool>(info, "Visible", true);
         }
@@ -308,13 +369,12 @@ namespace GMap.NET.WindowsForms
         /// Runs when the entire object graph has been de-serialized.
         /// </summary>
         /// <param name="sender">The object that initiated the callback. The functionality for this parameter is not currently implemented.</param>
-        public override void OnDeserialization(object sender)
+        public void OnDeserialization(object sender)
         {
-            base.OnDeserialization(sender);
 
             // Accounts for the de-serialization being breadth first rather than depth first.
-            LocalPoints.AddRange(deserializedLocalPoints);
-            LocalPoints.Capacity = Points.Count;
+            // LocalPoints.AddRange(deserializedLocalPoints);
+            // LocalPoints.Capacity = Points.Count;
         }
 
         #endregion
@@ -329,8 +389,20 @@ namespace GMap.NET.WindowsForms
             if (!disposed)
             {
                 disposed = true;
+                
+                foreach (List<PointLatLng> polygon in Polygons)
+                {
+                    polygon.Clear();
+                }
 
-                LocalPoints.Clear();
+                Polygons.Clear();
+
+                foreach (List<GPoint> localPolygon in LocalPolygons)
+                {
+                    localPolygon.Clear();
+                }
+
+                LocalPolygons.Clear();
 
 #if !PocketPC
                 if (graphicsPath != null)
@@ -339,7 +411,6 @@ namespace GMap.NET.WindowsForms
                     graphicsPath = null;
                 }
 #endif
-                base.Clear();
             }
         }
 

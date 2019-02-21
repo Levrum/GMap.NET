@@ -741,18 +741,25 @@ namespace GMap.NET.WindowsForms
         /// <param name="polygon"></param>
         public void UpdatePolygonLocalPosition(GMapPolygon polygon)
         {
-            polygon.LocalPoints.Clear();
+            polygon.LocalPolygons.Clear();
 
-            for (int i = 0; i < polygon.Points.Count; i++)
+            foreach (List<PointLatLng> poly in polygon.Polygons)
             {
-                GPoint p = FromLatLngToLocal(polygon.Points[i]);
-#if !PocketPC
-                if (!MobileMode)
+                List<GPoint> localPoly = new List<GPoint>();
+                
+                for (int i = 0; i < poly.Count; i++)
                 {
-                    p.OffsetNegative(Core.renderOffset);
-                }
+                    GPoint p = FromLatLngToLocal(poly[i]);
+#if !PocketPC
+                    if (!MobileMode)
+                    {
+                        p.OffsetNegative(Core.renderOffset);
+                    }
 #endif
-                polygon.LocalPoints.Add(p);
+                    localPoly.Add(p);
+                }
+
+                polygon.LocalPolygons.Add(localPoly);
             }
 #if !PocketPC
             polygon.UpdateGraphicsPath();
