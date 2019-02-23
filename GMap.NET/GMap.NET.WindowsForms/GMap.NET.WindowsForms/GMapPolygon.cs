@@ -297,7 +297,19 @@ namespace GMap.NET.WindowsForms
         {
             List<PointLatLng> outerPolygon = Polygons[0];
 
-            int count = outerPolygon.Count;
+            bool result = isInside(p, outerPolygon);
+
+            for (int i = 1; i < Polygons.Count; i++)
+            {
+                result = result && !isInside(p, Polygons[i]);
+            }
+
+            return result;
+        }
+
+        private bool isInside(PointLatLng p, List<PointLatLng> polygon)
+        {
+            int count = polygon.Count;
 
             if (count < 3)
             {
@@ -308,8 +320,8 @@ namespace GMap.NET.WindowsForms
 
             for (int i = 0, j = count - 1; i < count; i++)
             {
-                var p1 = outerPolygon[i];
-                var p2 = outerPolygon[j];
+                var p1 = polygon[i];
+                var p2 = polygon[j];
 
                 if (p1.Lat < p.Lat && p2.Lat >= p.Lat || p2.Lat < p.Lat && p1.Lat >= p.Lat)
                 {
@@ -320,6 +332,7 @@ namespace GMap.NET.WindowsForms
                 }
                 j = i;
             }
+
             return result;
         }
 
