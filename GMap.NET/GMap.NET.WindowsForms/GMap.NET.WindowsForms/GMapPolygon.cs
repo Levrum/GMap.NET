@@ -301,7 +301,7 @@ namespace GMap.NET.WindowsForms
 
             for (int i = 1; i < Polygons.Count; i++)
             {
-                result = result && !isInside(p, Polygons[i]);
+                result = result ^ isInside(p, Polygons[i]);
             }
 
             return result;
